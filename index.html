@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ShopChat</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50">
+<div id="app" class="p-4"></div>
+
+<script>
+  // 🔑 Step 3 — Paste your Firebase config below (from Firebase console)
+  const firebaseConfig = {
+    apiKey: "REPLACE_ME",
+    authDomain: "REPLACE_ME",
+    projectId: "REPLACE_ME",
+    storageBucket: "REPLACE_ME",
+    messagingSenderId: "REPLACE_ME",
+    appId: "REPLACE_ME",
+    databaseURL: "REPLACE_ME"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const rtdb = firebase.database();
+
+  const appDiv = document.getElementById("app");
+
+  // --- Login / Signup Screen ---
+  function renderLogin() {
+    appDiv.innerHTML = `
+      <div class="max-w-md mx-auto bg-white p-6 rounded shadow">
+        <h1 class="text-2xl font-bold mb-4">ShopChat</h1>
+        <input id="email" placeholder="Email" class="w-full border p-2 mb-2 rounded">
+        <input id="password" type="password" placeholder="Password" class="w-full border p-2 mb-2 rounded">
+        <input id="name" placeholder="Name (signup only)" class="w-full border p-2 mb-2 rounded">
+        <select id="role" class="w-full border p-2 mb-4 rounded">
+          <option value="customer">Customer</option>
+          <option value="shop">Shop Owner</option>
+        </select>
+        <div class="flex gap-2">
+          <button onclick="login()" class="flex-1 bg-blue-600 text-white p-2 rounded">Login</button>
+          <button onclick="signup()" class="flex-1 bg-green-600 text-white p-2 rounded">Sign up</button>
+        </div>
+      </div>`;
+  }
+
+  async function login() {
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch(e){ alert(e.message); }
+  }
+  async function signup() {
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    const name = document.getElementById("name").value;
+    const role = document.getElementById("role").value;
+    try {
+      const userCred = await auth.createUserWithEmailAndPassword(email, password);
+      await db.collection("users").doc(userCred.user.uid).set({
+        id: userCred.user.uid, name, email, role
+      });
+    } catch(e){ alert(e.message); }
+  }
+
+  // --- Main App ---
+  function renderApp(user) {
+    db.collection("users").doc(user.uid).get().then(doc=>{
+      const profile = doc.data();
+      appDiv.innerHTML = `
+        <div class="flex justify-between items-center bg-white p-4 shadow">
+          <div>
+            <div class="font-bold">ShopChat</div>
+            <div class="text-sm">${profile.name} (${profile.role})</div>
+          </div>
+          <button onclick="auth.signOut()" class="border p-2 rounded">Logout</button>
+        </div>
+        <div class="p-4" id="main"></div>`;
+      if(profile.role==="shop") renderShop(profile);
+      else renderCustomer(profile);
+    });
+  }
+
+  function renderShop(profile) {
+    document.getElementById("main").innerHTML = `
+      <h2 class="text-xl font-bold mb-2">Your Shop</h2>
+      <button onclick="createShop('${profile.id}')" class="bg-blue-600 text-white px-4 py-2 rounded">Add / Edit Shop</button>
+      <h2 class="text-xl font-bold mt-6 mb-2">Chat</h2>
+      <button onclick="startChatPrompt('${profile.id}')" class="border px-4 py-2 rounded">Chat with customer</button>`;
+  }
+
+  async function createShop(ownerId) {
+    const name = prompt("Shop name?");
+    const category = prompt("Category?");
+    await db.collection("shops").doc(ownerId).set({ ownerId, name, category });
+    alert("Shop saved!");
+  }
+
+  function renderCustomer(profile) {
+    document.getElementById("main").innerHTML = `
+      <h2 class="text-xl font-bold mb-2">Find Shops</h2>
+      <button onclick="listShops('${profile.id}')" class="bg-green-600 text-white px-4 py-2 rounded">Show Shops</button>`;
+  }
+
+  async function listShops(customerId) {
+    const snap = await db.collection("shops").get();
+    let html = "<div>";
+    snap.forEach(doc=>{
+      const s=doc.data();
+      html += `<div class="border p-2 mb-2"><b>${s.name}</b> (${s.category})
+        <button onclick="startChatPrompt('${customerId}','${s.ownerId}')" class="ml-2 border px-2 py-1">Chat</button>
+      </div>`;
+    });
+    html += "</div>";
+    document.getElementById("main").innerHTML = html;
+  }
+
+  function startChatPrompt(myId, otherId) {
+    if(!otherId) otherId = prompt("Enter other user ID:");
+    startChat(myId, otherId);
+  }
+
+  function startChat(myId, otherId) {
+    const chatId = [myId, otherId].sort().join("_");
+    document.getElementById("main").innerHTML = `
+      <div class="h-64 overflow-auto border p-2 mb-2" id="msgs"></div>
+      <div class="flex gap-2">
+        <input id="msg" class="flex-1 border p-2 rounded" placeholder="Message">
+        <button onclick="sendMsg('${chatId}','${myId}','${otherId}')" class="bg-blue-600 text-white px-4 rounded">Send</button>
+      </div>`;
+    const msgsRef = rtdb.ref("messages/"+chatId);
+    msgsRef.off();
+    msgsRef.on("child_added", snap=>{
+      const m = snap.val();
+      document.getElementById("msgs").innerHTML +=
+        `<div class="${m.senderId===myId?'text-right':''}">
+           <span class="inline-block px-2 py-1 rounded ${m.senderId===myId?'bg-blue-200':'bg-gray-200'}">${m.text}</span>
+         </div>`;
+    });
+  }
+
+  async function sendMsg(chatId, me, other) {
+    const text = document.getElementById("msg").value;
+    if(!text) return;
+    await rtdb.ref("messages/"+chatId).push({ senderId: me, receiverId: other, text, ts: Date.now() });
+    document.getElementById("msg").value="";
+  }
+
+  // Auth listener
+  auth.onAuthStateChanged(u=>{
+    if(!u) renderLogin();
+    else renderApp(u);
+  });
+</script>
+</body>
+</html>
