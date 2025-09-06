@@ -1,163 +1,147 @@
-<!doctype html>
-<html>
+<!DOCTYPE html><html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>ShopChat</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShopChat - Improved</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js" type="module"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js" type="module"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js" type="module"></script>
 </head>
-<body class="bg-gray-50">
-<div id="app" class="p-4"></div>
+<body>
+  <h1>ShopChat 🚀</h1>  <!-- Login / Signup -->  <div id="auth-section">
+    <input id="email" placeholder="Email"><br>
+    <input id="password" type="password" placeholder="Password"><br>
+    <select id="role">
+      <option value="customer">Customer</option>
+      <option value="owner">Shop Owner</option>
+    </select><br>
+    <button id="signupBtn">Sign Up</button>
+    <button id="loginBtn">Log In</button>
+  </div>  <!-- Shop Owner Dashboard -->  <div id="owner-section" style="display:none;">
+    <h2>Owner Dashboard</h2>
+    <input id="productName" placeholder="Product Name"><br>
+    <input id="productPrice" placeholder="Price"><br>
+    <input id="productDesc" placeholder="Description"><br>
+    <input id="productImg" placeholder="Image URL"><br>
+    <button id="addProductBtn">Add Product</button><h3>Your Products</h3>
+<ul id="ownerProducts"></ul>
 
-<script>
-  
-  const firebaseConfig = {
-  apiKey: "AIzaSyDLcmJcAnXzNVd8gfN6dUhMKblyKFBZ4Yo",
-  authDomain: "shopchat-fac01.firebaseapp.com",
-  projectId: "shopchat-fac01",
-  storageBucket: "shopchat-fac01.appspot.com",
-  messagingSenderId: "302386314009",
-  appId: "1:302386314009:web:f05f679ea841c88be72388",
-  databaseURL: "https://shopchat-fac01-default-rtdb.firebaseio.com/"
-};
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
-  const rtdb = firebase.database();
+  </div>  <!-- Customer Dashboard -->  <div id="customer-section" style="display:none;">
+    <h2>Browse Shops</h2>
+    <ul id="shopList"></ul><div id="shopProducts"></div>
 
-  const appDiv = document.getElementById("app");
+  </div>  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, addDoc, onSnapshot, query, where, getDocs } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-  // --- Login / Signup Screen ---
-  function renderLogin() {
-    appDiv.innerHTML = `
-      <div class="max-w-md mx-auto bg-white p-6 rounded shadow">
-        <h1 class="text-2xl font-bold mb-4">ShopChat</h1>
-        <input id="email" placeholder="Email" class="w-full border p-2 mb-2 rounded">
-        <input id="password" type="password" placeholder="Password" class="w-full border p-2 mb-2 rounded">
-        <input id="name" placeholder="Name (signup only)" class="w-full border p-2 mb-2 rounded">
-        <select id="role" class="w-full border p-2 mb-4 rounded">
-          <option value="customer">Customer</option>
-          <option value="shop">Shop Owner</option>
-        </select>
-        <div class="flex gap-2">
-          <button onclick="login()" class="flex-1 bg-blue-600 text-white p-2 rounded">Login</button>
-          <button onclick="signup()" class="flex-1 bg-green-600 text-white p-2 rounded">Sign up</button>
-        </div>
-      </div>`;
-  }
+    // ✅ Your fixed Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyDLcmJcAnXzNVd8gfN6dUhMKblyKFBZ4Yo",
+      authDomain: "shopchat-fac01.firebaseapp.com",
+      projectId: "shopchat-fac01",
+      storageBucket: "shopchat-fac01.appspot.com",
+      messagingSenderId: "302386314009",
+      appId: "1:302386314009:web:f05f679ea841c88be72388",
+      databaseURL: "https://shopchat-fac01-default-rtdb.firebaseio.com/"
+    };
 
-  async function login() {
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
-    try {
-      await auth.signInWithEmailAndPassword(email, password);
-    } catch(e){ alert(e.message); }
-  }
-  async function signup() {
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
-    const name = document.getElementById("name").value;
-    const role = document.getElementById("role").value;
-    try {
-      const userCred = await auth.createUserWithEmailAndPassword(email, password);
-      await db.collection("users").doc(userCred.user.uid).set({
-        id: userCred.user.uid, name, email, role
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const signupBtn = document.getElementById("signupBtn");
+    const loginBtn = document.getElementById("loginBtn");
+
+    let currentUser = null;
+    let userRole = "customer";
+
+    signupBtn.onclick = async () => {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      const role = document.getElementById("role").value;
+      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      await setDoc(doc(db, "users", userCred.user.uid), { role });
+      currentUser = userCred.user;
+      userRole = role;
+      showDashboard(role);
+    };
+
+    loginBtn.onclick = async () => {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      const role = document.getElementById("role").value;
+      const userCred = await signInWithEmailAndPassword(auth, email, password);
+      const docSnap = await getDoc(doc(db, "users", userCred.user.uid));
+      currentUser = userCred.user;
+      userRole = docSnap.exists() ? docSnap.data().role : role;
+      showDashboard(userRole);
+    };
+
+    function showDashboard(role) {
+      document.getElementById("auth-section").style.display = "none";
+      if (role === "owner") {
+        document.getElementById("owner-section").style.display = "block";
+        loadOwnerProducts();
+      } else {
+        document.getElementById("customer-section").style.display = "block";
+        loadShops();
+      }
+    }
+
+    // 🔹 Shop Owner adds product
+    document.getElementById("addProductBtn").onclick = async () => {
+      const name = document.getElementById("productName").value;
+      const price = document.getElementById("productPrice").value;
+      const desc = document.getElementById("productDesc").value;
+      const img = document.getElementById("productImg").value;
+
+      await addDoc(collection(db, "products"), {
+        ownerId: currentUser.uid,
+        name,
+        price,
+        desc,
+        img
       });
-    } catch(e){ alert(e.message); }
-  }
+    };
 
-  // --- Main App ---
-  function renderApp(user) {
-    db.collection("users").doc(user.uid).get().then(doc=>{
-      const profile = doc.data();
-      appDiv.innerHTML = `
-        <div class="flex justify-between items-center bg-white p-4 shadow">
-          <div>
-            <div class="font-bold">ShopChat</div>
-            <div class="text-sm">${profile.name} (${profile.role})</div>
-          </div>
-          <button onclick="auth.signOut()" class="border p-2 rounded">Logout</button>
-        </div>
-        <div class="p-4" id="main"></div>`;
-      if(profile.role==="shop") renderShop(profile);
-      else renderCustomer(profile);
-    });
-  }
+    function loadOwnerProducts() {
+      const q = query(collection(db, "products"), where("ownerId", "==", currentUser.uid));
+      onSnapshot(q, (snapshot) => {
+        const list = document.getElementById("ownerProducts");
+        list.innerHTML = "";
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          list.innerHTML += `<li>${data.name} - ₹${data.price}</li>`;
+        });
+      });
+    }
 
-  function renderShop(profile) {
-    document.getElementById("main").innerHTML = `
-      <h2 class="text-xl font-bold mb-2">Your Shop</h2>
-      <button onclick="createShop('${profile.id}')" class="bg-blue-600 text-white px-4 py-2 rounded">Add / Edit Shop</button>
-      <h2 class="text-xl font-bold mt-6 mb-2">Chat</h2>
-      <button onclick="startChatPrompt('${profile.id}')" class="border px-4 py-2 rounded">Chat with customer</button>`;
-  }
+    function loadShops() {
+      const q = query(collection(db, "users"), where("role", "==", "owner"));
+      onSnapshot(q, (snapshot) => {
+        const list = document.getElementById("shopList");
+        list.innerHTML = "";
+        snapshot.forEach(docu => {
+          const data = docu.data();
+          const li = document.createElement("li");
+          li.textContent = `Shop Owner: ${docu.id}`;
+          li.onclick = () => loadProducts(docu.id);
+          list.appendChild(li);
+        });
+      });
+    }
 
-  async function createShop(ownerId) {
-    const name = prompt("Shop name?");
-    const category = prompt("Category?");
-    await db.collection("shops").doc(ownerId).set({ ownerId, name, category });
-    alert("Shop saved!");
-  }
-
-  function renderCustomer(profile) {
-    document.getElementById("main").innerHTML = `
-      <h2 class="text-xl font-bold mb-2">Find Shops</h2>
-      <button onclick="listShops('${profile.id}')" class="bg-green-600 text-white px-4 py-2 rounded">Show Shops</button>`;
-  }
-
-  async function listShops(customerId) {
-    const snap = await db.collection("shops").get();
-    let html = "<div>";
-    snap.forEach(doc=>{
-      const s=doc.data();
-      html += `<div class="border p-2 mb-2"><b>${s.name}</b> (${s.category})
-        <button onclick="startChatPrompt('${customerId}','${s.ownerId}')" class="ml-2 border px-2 py-1">Chat</button>
-      </div>`;
-    });
-    html += "</div>";
-    document.getElementById("main").innerHTML = html;
-  }
-
-  function startChatPrompt(myId, otherId) {
-    if(!otherId) otherId = prompt("Enter other user ID:");
-    startChat(myId, otherId);
-  }
-
-  function startChat(myId, otherId) {
-    const chatId = [myId, otherId].sort().join("_");
-    document.getElementById("main").innerHTML = `
-      <div class="h-64 overflow-auto border p-2 mb-2" id="msgs"></div>
-      <div class="flex gap-2">
-        <input id="msg" class="flex-1 border p-2 rounded" placeholder="Message">
-        <button onclick="sendMsg('${chatId}','${myId}','${otherId}')" class="bg-blue-600 text-white px-4 rounded">Send</button>
-      </div>`;
-    const msgsRef = rtdb.ref("messages/"+chatId);
-    msgsRef.off();
-    msgsRef.on("child_added", snap=>{
-      const m = snap.val();
-      document.getElementById("msgs").innerHTML +=
-        `<div class="${m.senderId===myId?'text-right':''}">
-           <span class="inline-block px-2 py-1 rounded ${m.senderId===myId?'bg-blue-200':'bg-gray-200'}">${m.text}</span>
-         </div>`;
-    });
-  }
-
-  async function sendMsg(chatId, me, other) {
-    const text = document.getElementById("msg").value;
-    if(!text) return;
-    await rtdb.ref("messages/"+chatId).push({ senderId: me, receiverId: other, text, ts: Date.now() });
-    document.getElementById("msg").value="";
-  }
-
-  // Auth listener
-  auth.onAuthStateChanged(u=>{
-    if(!u) renderLogin();
-    else renderApp(u);
-  });
-</script>
-</body>
-</html>
+    function loadProducts(ownerId) {
+      const q = query(collection(db, "products"), where("ownerId", "==", ownerId));
+      const container = document.getElementById("shopProducts");
+      onSnapshot(q, (snapshot) => {
+        container.innerHTML = "<h3>Products</h3>";
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          container.innerHTML += `<div><img src="${data.img}" width="80"><br>${data.name} - ₹${data.price}<br>${data.desc}</div><hr>`;
+        });
+      });
+    }
+  </script></body>
+      </html>
